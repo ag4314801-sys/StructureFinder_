@@ -1,0 +1,33 @@
+name: Build StructureRadar 1.16.5
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.10.1'
+
+      - name: Build Mod JAR
+        run: gradle build --no-daemon
+
+      - name: Upload Mod JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: StructureRadar-1.16.5-JAR
+          path: build/libs/*.jar
