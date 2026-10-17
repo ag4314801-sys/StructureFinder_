@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "structureradar",
+  "version": "${version}",
+  "name": "StructureRadar",
+  "description": "Client-side structure scanner and interactive 2D radar/list GUI for Minecraft 1.16.5 servers and singleplayer.",
+  "authors": [
+    "StructureRadarDev"
+  ],
+  "contact": {
+    "sources": "https://github.com/example/structureradar-1.16.5"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.structureradar.StructureRadarClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.11.3",
+    "fabric": "*",
+    "minecraft": "1.16.x"
+  }
+}
