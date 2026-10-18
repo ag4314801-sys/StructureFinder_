@@ -3,7 +3,7 @@
   "id": "structureradar",
   "version": "${version}",
   "name": "StructureRadar",
-  "description": "Clean, compact client-side structure radar and directional compass for Minecraft 1.16.5.",
+  "description": "Accurate render-distance structure locator and micro-radar HUD for Minecraft 1.16.5.",
   "authors": [
     "StructureRadarDev"
   ],

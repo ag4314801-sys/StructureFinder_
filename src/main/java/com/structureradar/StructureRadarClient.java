@@ -14,18 +14,15 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.LiteralText;
-import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
 /**
- * Clean, lightweight client entrypoint for StructureRadar (Minecraft 1.16.5 Fabric).
+ * Client-side entrypoint for StructureRadar (Minecraft 1.16.5 Fabric).
  *
- * Keybinds:
- * - 'R': Open compact centered StructureRadarScreen modal
- * - 'O': Toggle structure scanning ON/OFF
- * - 'H': Toggle the compact top-right Mini Radar & Direction Compass HUD
+ * Features a tiny, unobtrusive 116x26 micro-HUD in the top-right corner
+ * that only appears when a verified structure is inside the player's Render Distance.
  */
 public class StructureRadarClient implements ClientModInitializer {
 
@@ -94,103 +91,81 @@ public class StructureRadarClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new HudRenderCallback() {
             @Override
             public void onHudRender(MatrixStack matrices, float tickDelta) {
-                renderCompactCornerHud(matrices);
+                renderMicroCornerHud(matrices);
             }
         });
     }
 
     /**
-     * Renders a small, sleek 146x42 corner widget in the top-right of the screen
-     * with a player-oriented mini radar and an exact directional arrow + distance readout.
+     * Renders a tiny 116x26 micro-HUD pill in the top-right corner ONLY when a verified structure
+     * is currently inside the player's Render Distance.
      */
-    private void renderCompactCornerHud(MatrixStack matrices) {
+    private void renderMicroCornerHud(MatrixStack matrices) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.player == null || mc.world == null || mc.options.hudHidden || mc.options.debugEnabled) {
             return;
         }
 
         ModConfig config = ModConfig.get();
-        if (!config.miniHudEnabled) {
+        if (!config.miniHudEnabled || !config.scanningEnabled) {
             return;
         }
 
         double px = mc.player.getX();
         double pz = mc.player.getZ();
         float yaw = mc.player.yaw;
+        int rdChunks = Math.max(2, mc.options.viewDistance);
 
-        StructureInfo target = CHUNK_SCANNER.getPrimaryTarget(px, pz);
+        StructureInfo target = CHUNK_SCANNER.getPrimaryTargetInRenderDistance(px, pz, rdChunks);
         if (target == null) {
-            return;
+            return; // Auto-hide HUD when no structure is in render distance so screen stays 100% clean
         }
 
         int screenW = mc.getWindow().getScaledWidth();
-        int cardW = 148;
-        int cardH = 42;
-        int cardX = screenW - cardW - 6;
-        int cardY = 6;
+        int pillW = 118;
+        int pillH = 26;
+        int pillX = screenW - pillW - 4;
+        int pillY = 4;
 
-        // Sleek dark translucent card with 1px subtle border
-        DrawableHelper.fill(matrices, cardX, cardY, cardX + cardW, cardY + cardH, 0xB80D131A);
         int accent = target.getCategory().getColorArgb();
-        DrawableHelper.fill(matrices, cardX, cardY, cardX + cardW, cardY + 1, 0xFF263648);
-        DrawableHelper.fill(matrices, cardX, cardY + cardH - 1, cardX + cardW, cardY + cardH, 0xFF263648);
-        DrawableHelper.fill(matrices, cardX, cardY, cardX + 2, cardY + cardH, accent);
+        DrawableHelper.fill(matrices, pillX, pillY, pillX + pillW, pillY + pillH, 0xB00C1117);
+        DrawableHelper.fill(matrices, pillX, pillY, pillX + 2, pillY + pillH, accent);
 
-        // Mini 32x32 player-relative radar scope on left side of the card
-        int radarX = cardX + 5;
-        int radarY = cardY + 5;
-        int radarSize = 32;
-        int rcx = radarX + radarSize / 2;
-        int rcy = radarY + radarSize / 2;
-        int rRadius = 13;
+        // Micro 20x20 radar scope inside the pill
+        int rx = pillX + 5;
+        int ry = pillY + 3;
+        int rSize = 20;
+        int rcx = rx + rSize / 2;
+        int rcy = ry + rSize / 2;
+        int rRad = 8;
 
-        DrawableHelper.fill(matrices, radarX, radarY, radarX + radarSize, radarY + radarSize, 0xCC070A0E);
-        DrawableHelper.fill(matrices, radarX, rcy, radarX + radarSize, rcy + 1, 0x2200E5FF);
-        DrawableHelper.fill(matrices, rcx, radarY, rcx + 1, radarY + radarSize, 0x2200E5FF);
+        DrawableHelper.fill(matrices, rx, ry, rx + rSize, ry + rSize, 0xCC06090D);
+        DrawableHelper.fill(matrices, rx, rcy, rx + rSize, rcy + 1, 0x2200E5FF);
+        DrawableHelper.fill(matrices, rcx, ry, rcx + 1, ry + rSize, 0x2200E5FF);
 
-        // Plot nearby blips relative to player's facing direction (UP = player look direction)
-        List<StructureInfo> nearby = CHUNK_SCANNER.getFilteredStructuresSorted(px, pz, null);
-        double range = config.radarZoomRange;
-        for (int i = 0; i < Math.min(6, nearby.size()); i++) {
-            StructureInfo s = nearby.get(i);
+        double rdBlocks = rdChunks * 16.0D;
+        List<StructureInfo> inRd = CHUNK_SCANNER.getStructuresInRenderDistanceSorted(px, pz, rdChunks, null);
+        for (int i = 0; i < Math.min(4, inRd.size()); i++) {
+            StructureInfo s = inRd.get(i);
             double dist = s.getHorizontalDistanceTo(px, pz);
-            double relDeg = s.getRelativeAngleDegrees(px, pz, yaw);
-            double rad = Math.toRadians(relDeg);
-            double norm = Math.min(1.0D, dist / range);
-
-            int bx = rcx + (int) Math.round(Math.sin(rad) * norm * rRadius);
-            int by = rcy - (int) Math.round(Math.cos(rad) * norm * rRadius);
+            double relRad = Math.toRadians(s.getRelativeAngleDegrees(px, pz, yaw));
+            double norm = Math.min(1.0D, dist / rdBlocks);
+            int bx = rcx + (int) Math.round(Math.sin(relRad) * norm * rRad);
+            int by = rcy - (int) Math.round(Math.cos(relRad) * norm * rRad);
             DrawableHelper.fill(matrices, bx - 1, by - 1, bx + 2, by + 2, s.getCategory().getColorArgb());
         }
+        DrawableHelper.fill(matrices, rcx, rcy, rcx + 1, rcy + 1, 0xFF00E676);
 
-        // Player center dot
-        DrawableHelper.fill(matrices, rcx - 1, rcy - 1, rcx + 2, rcy + 2, 0xFF00E676);
-
-        // Right side text readout (Direction Arrow + Name + Distance + XYZ)
-        int textX = radarX + radarSize + 6;
+        // Compact 2-line text readout (Arrow + Name + Distance on Line 1, Exact XYZ on Line 2)
+        int tx = rx + rSize + 5;
         String arrow = target.getRelativeDirectionArrow(px, pz, yaw);
-        String cardinal = target.getWorldCardinalFromPlayer(px, pz);
         int dist = (int) Math.round(target.getHorizontalDistanceTo(px, pz));
 
-        String title = arrow + " " + target.getCategory().getDisplayName();
-        if (title.length() > 16) title = title.substring(0, 16);
-        String distLine = dist + "m (" + cardinal + ") [R]";
-        String xyzLine = target.getCompactCoords();
+        String line1 = arrow + " " + target.getCategory().getDisplayName() + " " + dist + "m";
+        String line2 = target.getCompactCoords();
 
-        DrawableHelper.drawStringWithShadow(matrices, mc.textRenderer, title, textX, cardY + 6, accent);
-        DrawableHelper.drawStringWithShadow(matrices, mc.textRenderer, distLine, textX, cardY + 17, 0xFFFFFFFF);
-        DrawableHelper.drawStringWithShadow(matrices, mc.textRenderer, xyzLine, textX, cardY + 28, 0xFF90A4AE);
-
-        // Optional compact 1-line toast pill right below the corner card when a new structure is detected
-        List<ChunkScanner.HudNotification> toasts = CHUNK_SCANNER.getActiveHudNotifications();
-        if (!toasts.isEmpty()) {
-            StructureInfo newest = toasts.get(toasts.size() - 1).structure;
-            int toastY = cardY + cardH + 3;
-            DrawableHelper.fill(matrices, cardX, toastY, cardX + cardW, toastY + 13, 0xCC101822);
-            DrawableHelper.fill(matrices, cardX, toastY, cardX + 2, toastY + 13, newest.getCategory().getColorArgb());
-            String toastText = "\u00a7a+ Found: \u00a7f" + newest.getCategory().getDisplayName();
-            DrawableHelper.drawStringWithShadow(matrices, mc.textRenderer, toastText, cardX + 6, toastY + 3, 0xFFFFFFFF);
-        }
+        DrawableHelper.drawStringWithShadow(matrices, mc.textRenderer, line1, tx, pillY + 4, accent);
+        DrawableHelper.drawStringWithShadow(matrices, mc.textRenderer, line2, tx, pillY + 14, 0xFFE0E6ED);
     }
 
     public static ChunkScanner getChunkScanner() {

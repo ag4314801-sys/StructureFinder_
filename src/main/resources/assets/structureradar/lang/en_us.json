@@ -2,5 +2,5 @@
   "category.structureradar.general": "StructureRadar",
   "key.structureradar.open_radar": "Open Structure Radar",
   "key.structureradar.toggle_scan": "Toggle Structure Scanning",
-  "key.structureradar.toggle_hud": "Toggle Mini Radar HUD"
+  "key.structureradar.toggle_hud": "Toggle Corner Micro-Radar"
 }

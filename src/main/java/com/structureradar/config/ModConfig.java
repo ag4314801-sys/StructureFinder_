@@ -13,7 +13,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Clean persistent configuration for StructureRadar (Minecraft 1.16.5).
+ * Persistent configuration for StructureRadar (Minecraft 1.16.5).
  */
 public class ModConfig {
 
@@ -27,10 +27,8 @@ public class ModConfig {
 
     public boolean scanningEnabled = true;
     public boolean miniHudEnabled = true;
-    public boolean chatAlertsEnabled = false; // Off by default to keep chat clean
-    public int chunksPerTickBudget = 3;
-    public int clusterMergeRadius = 80;
-    public double radarZoomRange = 240.0D;
+    public boolean chatAlertsEnabled = false;
+    public int chunksPerTickBudget = 4;
     public Set<String> enabledStructureTypes = new HashSet<String>();
 
     public ModConfig() {
@@ -62,9 +60,6 @@ public class ModConfig {
                         for (StructureInfo.StructureCategory c : StructureInfo.StructureCategory.values()) {
                             loaded.enabledStructureTypes.add(c.name());
                         }
-                    }
-                    if (loaded.radarZoomRange < 64.0D || loaded.radarZoomRange > 2048.0D) {
-                        loaded.radarZoomRange = 240.0D;
                     }
                     return loaded;
                 }
