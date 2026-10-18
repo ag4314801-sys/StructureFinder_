@@ -1,25 +1,26 @@
 {
   "schemaVersion": 1,
-  "id": "structureradar",
+  "id": "cavemapplus",
   "version": "${version}",
-  "name": "StructureRadar",
-  "description": "Accurate render-distance structure locator and micro-radar HUD for Minecraft 1.16.5.",
+  "name": "CaveMapPlus",
+  "description": "Asynchronous surface & cave slice world mapper and high-precision structure locator for Minecraft 1.21.11.",
   "authors": [
-    "StructureRadarDev"
+    "CaveMapPlusDev"
   ],
   "contact": {
-    "sources": "https://github.com/example/structureradar-1.16.5"
+    "sources": "https://github.com/example/cavemapplus"
   },
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
     "client": [
-      "com.structureradar.StructureRadarClient"
+      "com.cavemapplus.CaveMapClient"
     ]
   },
   "depends": {
-    "fabricloader": ">=0.11.3",
-    "fabric": "*",
-    "minecraft": "1.16.x"
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21",
+    "java": ">=21",
+    "fabric-api": "*"
   }
 }

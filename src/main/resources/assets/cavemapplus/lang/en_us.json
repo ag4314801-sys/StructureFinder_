@@ -1,0 +1,8 @@
+{
+  "category.cavemapplus.general": "CaveMapPlus",
+  "key.cavemapplus.open_map": "Open Full-Screen World & Cave Map",
+  "key.cavemapplus.toggle_cave_mode": "Quick-Toggle Cave Mode",
+  "cavemapplus.mode.surface": "Mode: Surface Terrain",
+  "cavemapplus.mode.cave": "Mode: Cave Slice",
+  "cavemapplus.slider.depth": "Cave Y-Slice: %d"
+}
