@@ -3,7 +3,7 @@
   "id": "structureradar",
   "version": "${version}",
   "name": "StructureRadar",
-  "description": "Client-side structure scanner and interactive 2D radar/list GUI for Minecraft 1.16.5 servers and singleplayer.",
+  "description": "Clean, compact client-side structure radar and directional compass for Minecraft 1.16.5.",
   "authors": [
     "StructureRadarDev"
   ],

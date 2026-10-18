@@ -1,7 +1,6 @@
 {
   "category.structureradar.general": "StructureRadar",
-  "key.structureradar.open_radar": "Open Structure Radar GUI",
+  "key.structureradar.open_radar": "Open Structure Radar",
   "key.structureradar.toggle_scan": "Toggle Structure Scanning",
-  "structureradar.screen.title": "StructureRadar - Render Distance Scanner",
-  "structureradar.hud.discovered": "Structure Detected: %s at [%d, %d, %d] (%dm)"
+  "key.structureradar.toggle_hud": "Toggle Mini Radar HUD"
 }

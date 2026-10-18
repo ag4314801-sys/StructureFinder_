@@ -15,57 +15,61 @@ import net.minecraft.util.math.MathHelper;
 import java.util.List;
 
 /**
- * Interactive 1.16.5 Radar + Scrollable Structure List GUI opened with 'R'.
- * Uses strictly 1.16.5 MatrixStack + DrawableHelper + ButtonWidget + Text.of().
+ * Compact, centered 320x196 floating modal GUI for StructureRadar (Minecraft 1.16.5).
+ *
+ * Design Improvements:
+ * - Occupies a small centered 320x196 window instead of covering the entire screen.
+ * - Left side features a Player-Yaw-Synced Directional Radar Scope (UP = exact direction player is looking)
+ *   with rotating N/E/S/W compass ring and a directional guidance line to the locked/nearest structure.
+ * - Right side features a clean, scannable list with live directional arrows (▲ ↗ ▶ ↘ ▼ ↙ ◀ ↖),
+ *   cardinal bearings, distances, and one-click HUD locking or coordinate copying.
  */
 public class StructureRadarScreen extends Screen {
 
+    private static final int WINDOW_WIDTH = 320;
+    private static final int WINDOW_HEIGHT = 196;
+
     private final ChunkScanner scanner;
 
-    private int filterCategoryIndex = -1; // -1 = ALL categories
+    private int winX;
+    private int winY;
+    private int filterCategoryIndex = -1; // -1 = All
     private int scrollOffset = 0;
-    private int selectedIndex = -1;
-    private double radarRangeBlocks = 256.0D;
-
-    private ButtonWidget toggleScanButton;
-    private ButtonWidget filterTypeButton;
-    private ButtonWidget clearCacheButton;
-    private ButtonWidget rescanButton;
-    private ButtonWidget zoomInButton;
-    private ButtonWidget zoomOutButton;
-    private ButtonWidget copyCoordsButton;
-    private ButtonWidget hudAlertsButton;
 
     public StructureRadarScreen(ChunkScanner scanner) {
-        super(Text.of("StructureRadar - Render Distance Scanner"));
+        super(Text.of("StructureRadar"));
         this.scanner = scanner;
     }
 
     @Override
     protected void init() {
         super.init();
+        this.winX = (this.width - WINDOW_WIDTH) / 2;
+        this.winY = (this.height - WINDOW_HEIGHT) / 2;
+
         final ModConfig config = ModConfig.get();
+        int btnY = this.winY + WINDOW_HEIGHT - 24;
+        int btnW = 73;
+        int gap = 4;
+        int startX = this.winX + 8;
 
-        int bottomY = this.height - 28;
-        int topBtnY = 28;
-
-        // Top Control Row
-        this.toggleScanButton = this.addButton(new ButtonWidget(
-                12, topBtnY, 115, 20,
-                getScanButtonLabel(config),
+        // 4 clean, non-overlapping buttons in a single compact bottom bar
+        this.addButton(new ButtonWidget(
+                startX, btnY, btnW, 18,
+                getScanLabel(config),
                 new ButtonWidget.PressAction() {
                     @Override
                     public void onPress(ButtonWidget button) {
                         config.scanningEnabled = !config.scanningEnabled;
                         config.save();
-                        button.setMessage(getScanButtonLabel(config));
+                        button.setMessage(getScanLabel(config));
                     }
                 }
         ));
 
-        this.filterTypeButton = this.addButton(new ButtonWidget(
-                132, topBtnY, 145, 20,
-                getFilterButtonLabel(),
+        this.addButton(new ButtonWidget(
+                startX + (btnW + gap), btnY, btnW + 8, 18,
+                getFilterLabel(),
                 new ButtonWidget.PressAction() {
                     @Override
                     public void onPress(ButtonWidget button) {
@@ -75,315 +79,307 @@ public class StructureRadarScreen extends Screen {
                             filterCategoryIndex = -1;
                         }
                         scrollOffset = 0;
-                        selectedIndex = -1;
-                        button.setMessage(getFilterButtonLabel());
+                        button.setMessage(getFilterLabel());
                     }
                 }
         ));
 
-        this.hudAlertsButton = this.addButton(new ButtonWidget(
-                282, topBtnY, 110, 20,
-                getHudButtonLabel(config),
+        this.addButton(new ButtonWidget(
+                startX + (btnW + gap) * 2 + 8, btnY, btnW - 4, 18,
+                Text.of("Copy XYZ"),
                 new ButtonWidget.PressAction() {
                     @Override
                     public void onPress(ButtonWidget button) {
-                        config.hudBannerEnabled = !config.hudBannerEnabled;
-                        config.save();
-                        button.setMessage(getHudButtonLabel(config));
+                        copyTrackedStructureCoords();
                     }
                 }
         ));
 
-        // Bottom Control Row
-        this.rescanButton = this.addButton(new ButtonWidget(
-                12, bottomY, 95, 20,
-                Text.of("Rescan Chunks"),
-                new ButtonWidget.PressAction() {
-                    @Override
-                    public void onPress(ButtonWidget button) {
-                        scanner.rescanAroundPlayer();
-                    }
-                }
-        ));
-
-        this.clearCacheButton = this.addButton(new ButtonWidget(
-                112, bottomY, 90, 20,
-                Text.of("Clear Cache"),
+        this.addButton(new ButtonWidget(
+                startX + (btnW + gap) * 3 + 4, btnY, btnW - 4, 18,
+                Text.of("Clear"),
                 new ButtonWidget.PressAction() {
                     @Override
                     public void onPress(ButtonWidget button) {
                         scanner.clearCache();
-                        selectedIndex = -1;
                         scrollOffset = 0;
                     }
                 }
         ));
-
-        this.zoomInButton = this.addButton(new ButtonWidget(
-                207, bottomY, 68, 20,
-                Text.of("Radar +"),
-                new ButtonWidget.PressAction() {
-                    @Override
-                    public void onPress(ButtonWidget button) {
-                        radarRangeBlocks = Math.max(64.0D, radarRangeBlocks * 0.75D);
-                    }
-                }
-        ));
-
-        this.zoomOutButton = this.addButton(new ButtonWidget(
-                280, bottomY, 68, 20,
-                Text.of("Radar -"),
-                new ButtonWidget.PressAction() {
-                    @Override
-                    public void onPress(ButtonWidget button) {
-                        radarRangeBlocks = Math.min(2048.0D, radarRangeBlocks / 0.75D);
-                    }
-                }
-        ));
-
-        this.copyCoordsButton = this.addButton(new ButtonWidget(
-                353, bottomY, 105, 20,
-                Text.of("Copy Selected XYZ"),
-                new ButtonWidget.PressAction() {
-                    @Override
-                    public void onPress(ButtonWidget button) {
-                        copySelectedStructureCoords();
-                    }
-                }
-        ));
     }
 
-    private Text getScanButtonLabel(ModConfig config) {
-        return Text.of("Scanning: " + (config.scanningEnabled ? "ON" : "OFF"));
+    private Text getScanLabel(ModConfig cfg) {
+        return Text.of("Scan: " + (cfg.scanningEnabled ? "\u00a7aON" : "\u00a7cOFF"));
     }
 
-    private Text getHudButtonLabel(ModConfig config) {
-        return Text.of("HUD Alert: " + (config.hudBannerEnabled ? "ON" : "OFF"));
-    }
-
-    private Text getFilterButtonLabel() {
+    private Text getFilterLabel() {
         if (filterCategoryIndex < 0) {
-            return Text.of("Filter: ALL Structures");
+            return Text.of("Type: All");
         }
         StructureInfo.StructureCategory cat = StructureInfo.StructureCategory.values()[filterCategoryIndex];
-        return Text.of("Filter: " + cat.getDisplayName());
+        return Text.of(cat.getShortCode() + ": " + cat.getDisplayName());
     }
 
     private StructureInfo.StructureCategory getActiveCategoryFilter() {
-        if (filterCategoryIndex < 0) {
-            return null;
-        }
+        if (filterCategoryIndex < 0) return null;
         StructureInfo.StructureCategory[] all = StructureInfo.StructureCategory.values();
-        if (filterCategoryIndex < all.length) {
-            return all[filterCategoryIndex];
-        }
-        return null;
+        return filterCategoryIndex < all.length ? all[filterCategoryIndex] : null;
     }
 
-    private void copySelectedStructureCoords() {
+    private void copyTrackedStructureCoords() {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null) {
-            return;
-        }
-        List<StructureInfo> list = scanner.getFilteredStructuresSorted(
-                mc.player.getX(),
-                mc.player.getZ(),
-                getActiveCategoryFilter()
-        );
-        if (selectedIndex >= 0 && selectedIndex < list.size()) {
-            StructureInfo info = list.get(selectedIndex);
-            String coords = info.getX() + " " + info.getY() + " " + info.getZ();
+        if (mc == null || mc.player == null) return;
+        StructureInfo target = scanner.getPrimaryTarget(mc.player.getX(), mc.player.getZ());
+        if (target != null) {
+            String coords = target.getX() + " " + target.getY() + " " + target.getZ();
             mc.keyboard.setClipboard(coords);
-            mc.player.sendMessage(new LiteralText("\u00a7a[StructureRadar] Copied coordinates to clipboard: \u00a7f" + coords), false);
+            mc.player.sendMessage(new LiteralText("\u00a7b[Radar] \u00a7fCopied \u00a7e"
+                    + target.getCategory().getDisplayName() + "\u00a7f XYZ: \u00a7a" + coords), true);
         }
     }
 
     @Override
     public void render(MatrixStack matrices, int mouseX, int mouseY, float delta) {
-        this.renderBackground(matrices);
-
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.player == null || mc.world == null) {
             super.render(matrices, mouseX, mouseY, delta);
             return;
         }
 
-        // Outer dark panel backdrop
-        DrawableHelper.fill(matrices, 8, 8, this.width - 8, this.height - 6, 0xD80D131A);
-        drawHollowBorder(matrices, 8, 8, this.width - 16, this.height - 14, 0xFF2C3E50);
+        // Subtle shadow behind the compact 320x196 modal window (leaves game world visible)
+        DrawableHelper.fill(matrices, winX + 3, winY + 3, winX + WINDOW_WIDTH + 3, winY + WINDOW_HEIGHT + 3, 0x66000000);
+        DrawableHelper.fill(matrices, winX, winY, winX + WINDOW_WIDTH, winY + WINDOW_HEIGHT, 0xF210161E);
+        drawBorder(matrices, winX, winY, WINDOW_WIDTH, WINDOW_HEIGHT, 0xFF2A3B4C);
 
-        // Title bar
-        DrawableHelper.drawCenteredText(
-                matrices,
-                this.textRenderer,
-                new LiteralText("STRUCTURERADAR 1.16.5  |  Render Distance: " + mc.options.viewDistance
-                        + " chunks  |  Scanned: " + scanner.getScannedChunkCount() + " chunks"),
-                this.width / 2,
-                14,
-                0xFF00E5FF
-        );
+        // Compact Header Bar (20px tall)
+        DrawableHelper.fill(matrices, winX + 1, winY + 1, winX + WINDOW_WIDTH - 1, winY + 20, 0xFF16202B);
+        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, "STRUCTURE RADAR", winX + 8, winY + 6, 0xFF00E5FF);
 
-        int contentTop = 54;
-        int contentBottom = this.height - 34;
-        int radarPanelSize = Math.min(contentBottom - contentTop, Math.max(130, (this.width - 36) / 3));
-
-        int radarLeft = 14;
-        int radarRight = radarLeft + radarPanelSize;
-        int listLeft = radarRight + 10;
-        int listRight = this.width - 14;
+        String stats = "RD: " + mc.options.viewDistance + "c  |  Scanned: " + scanner.getScannedChunkCount();
+        int statsW = this.textRenderer.getWidth(stats);
+        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, stats, winX + WINDOW_WIDTH - statsW - 8, winY + 6, 0xFF95A5A6);
 
         List<StructureInfo> structures = scanner.getFilteredStructuresSorted(
-                mc.player.getX(),
-                mc.player.getZ(),
-                getActiveCategoryFilter()
+                mc.player.getX(), mc.player.getZ(), getActiveCategoryFilter()
         );
+        StructureInfo activeTarget = scanner.getPrimaryTarget(mc.player.getX(), mc.player.getZ());
 
-        // 1. Render 2D Dark Radar Display on the Left
-        renderDarkRadarPanel(matrices, mc, structures, radarLeft, contentTop, radarPanelSize);
+        // Left Column: Player-Centric Directional Radar Scope (104x104)
+        int radarX = winX + 8;
+        int radarY = winY + 26;
+        int radarSize = 104;
+        renderDirectionalRadarScope(matrices, mc, structures, activeTarget, radarX, radarY, radarSize);
 
-        // 2. Render Scrollable Sorted Structure List on the Right
-        renderStructureListPanel(matrices, mc, structures, listLeft, contentTop, listRight, contentBottom, mouseX, mouseY);
+        // Below Radar: Active Target Direction Summary Box
+        renderTargetBearingCard(matrices, mc, activeTarget, radarX, radarY + radarSize + 4, radarSize, 32);
+
+        // Right Column: Compact Scrollable Structure List (192x140)
+        int listX = radarX + radarSize + 8;
+        int listY = radarY;
+        int listW = WINDOW_WIDTH - (radarSize + 24);
+        int listH = 140;
+        renderCompactStructureList(matrices, mc, structures, activeTarget, listX, listY, listW, listH, mouseX, mouseY);
 
         super.render(matrices, mouseX, mouseY, delta);
     }
 
-    private void renderDarkRadarPanel(
+    /**
+     * Renders a player-centric radar where UP (top of radar) is ALWAYS the exact direction
+     * the player is currently facing (player.yaw).
+     */
+    private void renderDirectionalRadarScope(
             MatrixStack matrices,
             MinecraftClient mc,
             List<StructureInfo> structures,
+            StructureInfo activeTarget,
             int x,
             int y,
             int size
     ) {
-        DrawableHelper.fill(matrices, x, y, x + size, y + size, 0xF0080C11);
-        drawHollowBorder(matrices, x, y, size, size, 0xFF00B8D4);
+        DrawableHelper.fill(matrices, x, y, x + size, y + size, 0xFF090D12);
+        drawBorder(matrices, x, y, size, size, 0xFF243447);
 
-        int centerX = x + size / 2;
-        int centerY = y + size / 2;
-        int radius = (size / 2) - 8;
+        int cx = x + size / 2;
+        int cy = y + size / 2;
+        int maxRadius = (size / 2) - 10;
 
-        // Crosshair axes & range rings
-        DrawableHelper.fill(matrices, x + 4, centerY, x + size - 4, centerY + 1, 0x3300E5FF);
-        DrawableHelper.fill(matrices, centerX, y + 4, centerX + 1, y + size - 4, 0x3300E5FF);
-        drawHollowBorder(matrices, centerX - radius / 2, centerY - radius / 2, radius, radius, 0x2200E5FF);
+        // Crosshairs & inner range ring
+        DrawableHelper.fill(matrices, x + 6, cy, x + size - 6, cy + 1, 0x2200E5FF);
+        DrawableHelper.fill(matrices, cx, y + 6, cx + 1, y + size - 6, 0x2200E5FF);
+        drawBorder(matrices, cx - maxRadius / 2, cy - maxRadius / 2, maxRadius, maxRadius, 0x1E00E5FF);
 
-        // Render-distance square indicator inside radar
-        double renderDistBlocks = mc.options.viewDistance * 16.0D;
-        int rdHalfPx = (int) Math.round((renderDistBlocks / radarRangeBlocks) * radius);
-        if (rdHalfPx > 4 && rdHalfPx < radius) {
-            drawHollowBorder(matrices, centerX - rdHalfPx, centerY - rdHalfPx, rdHalfPx * 2, rdHalfPx * 2, 0x662ECC71);
-        }
+        // Forward view cone lines (shows player's field of view pointing UP)
+        drawLine(matrices, cx, cy, cx - 18, y + 8, 0x2800FF88);
+        drawLine(matrices, cx, cy, cx + 18, y + 8, 0x2800FF88);
 
         double playerX = mc.player.getX();
         double playerZ = mc.player.getZ();
+        float playerYaw = mc.player.yaw;
+        double range = ModConfig.get().radarZoomRange;
 
-        // Plot structure blips relative to player position (North-up 2D radar)
+        // Draw rotating N, E, S, W cardinal markers around the radar perimeter
+        // In Minecraft: North is yaw 180, East is -90, South is 0, West is +90
+        drawRotatedCardinal(matrices, "N", 180.0D - playerYaw, cx, cy, maxRadius + 4, 0xFFFF5252);
+        drawRotatedCardinal(matrices, "E", -90.0D - playerYaw, cx, cy, maxRadius + 4, 0xFF7F8C8D);
+        drawRotatedCardinal(matrices, "S", 0.0D - playerYaw, cx, cy, maxRadius + 4, 0xFF7F8C8D);
+        drawRotatedCardinal(matrices, "W", 90.0D - playerYaw, cx, cy, maxRadius + 4, 0xFF7F8C8D);
+
+        // Plot structure blips rotated by player.yaw so UP = straight ahead of player
         for (int i = 0; i < structures.size(); i++) {
             StructureInfo s = structures.get(i);
-            double dx = (s.getX() - playerX) / radarRangeBlocks;
-            double dz = (s.getZ() - playerZ) / radarRangeBlocks;
+            double dist = s.getHorizontalDistanceTo(playerX, playerZ);
+            double relDeg = s.getRelativeAngleDegrees(playerX, playerZ, playerYaw);
+            double rad = Math.toRadians(relDeg);
 
-            int blipX = centerX + (int) Math.round(dx * radius);
-            int blipY = centerY + (int) Math.round(dz * radius);
-
-            blipX = MathHelper.clamp(blipX, x + 5, x + size - 5);
-            blipY = MathHelper.clamp(blipY, y + 5, y + size - 5);
+            double norm = Math.min(1.0D, dist / range);
+            int bx = cx + (int) Math.round(Math.sin(rad) * norm * maxRadius);
+            int by = cy - (int) Math.round(Math.cos(rad) * norm * maxRadius);
 
             int color = s.getCategory().getColorArgb();
-            if (i == selectedIndex) {
-                DrawableHelper.fill(matrices, blipX - 4, blipY - 4, blipX + 5, blipY + 5, 0xFFFFFFFF);
+            if (s.equals(activeTarget)) {
+                // Draw direct pointer line from player center to the locked/nearest target
+                drawLine(matrices, cx, cy, bx, by, (color & 0x00FFFFFF) | 0xAA000000);
+                DrawableHelper.fill(matrices, bx - 3, by - 3, bx + 4, by + 4, 0xFFFFFFFF);
             }
-            DrawableHelper.fill(matrices, blipX - 2, blipY - 2, blipX + 3, blipY + 3, color);
+            DrawableHelper.fill(matrices, bx - 2, by - 2, bx + 3, by + 3, color);
         }
 
-        // Player center dot
-        DrawableHelper.fill(matrices, centerX - 2, centerY - 2, centerX + 3, centerY + 3, 0xFF00FF88);
+        // Player center pointer (▲ facing UP = player's look direction)
+        DrawableHelper.fill(matrices, cx - 2, cy - 2, cx + 3, cy + 3, 0xFF00E676);
+        DrawableHelper.fill(matrices, cx, cy - 4, cx + 1, cy - 2, 0xFFFFFFFF);
 
-        // Cardinal labels & range footer
-        DrawableHelper.drawCenteredString(matrices, this.textRenderer, "N", centerX, y + 3, 0xFF7F8C8D);
-        DrawableHelper.drawCenteredString(matrices, this.textRenderer, "S", centerX, y + size - 11, 0xFF7F8C8D);
-        String rangeLabel = String.format("Range: %d blocks", (int) radarRangeBlocks);
-        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, rangeLabel, x + 5, y + size - 11, 0xFFBDC3C7);
+        // Zoom scale label in bottom-left of radar
+        String rangeText = (int) range + "m";
+        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, rangeText, x + 3, y + size - 10, 0xFF607D8B);
     }
 
-    private void renderStructureListPanel(
+    private void drawRotatedCardinal(MatrixStack matrices, String letter, double relDegrees, int cx, int cy, int radius, int color) {
+        double rad = Math.toRadians(MathHelper.wrapDegrees(relDegrees));
+        int lx = cx + (int) Math.round(Math.sin(rad) * radius) - 2;
+        int ly = cy - (int) Math.round(Math.cos(rad) * radius) - 3;
+        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, letter, lx, ly, color);
+    }
+
+    private void renderTargetBearingCard(
+            MatrixStack matrices,
+            MinecraftClient mc,
+            StructureInfo target,
+            int x,
+            int y,
+            int w,
+            int h
+    ) {
+        DrawableHelper.fill(matrices, x, y, x + w, y + h, 0xFF141D26);
+        drawBorder(matrices, x, y, w, h, 0xFF243447);
+
+        if (target == null) {
+            DrawableHelper.drawCenteredString(matrices, this.textRenderer, "No Target", x + w / 2, y + 12, 0xFF7F8C8D);
+            return;
+        }
+
+        double px = mc.player.getX();
+        double pz = mc.player.getZ();
+        float yaw = mc.player.yaw;
+
+        String arrow = target.getRelativeDirectionArrow(px, pz, yaw);
+        String cardinal = target.getWorldCardinalFromPlayer(px, pz);
+        int dist = (int) Math.round(target.getHorizontalDistanceTo(px, pz));
+
+        String line1 = arrow + " " + target.getCategory().getDisplayName();
+        if (line1.length() > 16) line1 = line1.substring(0, 16);
+        String line2 = dist + "m (" + cardinal + ")  Y:" + target.getY();
+
+        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, line1, x + 5, y + 5, target.getCategory().getColorArgb());
+        DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, line2, x + 5, y + 18, 0xFFECF0F1);
+    }
+
+    private void renderCompactStructureList(
             MatrixStack matrices,
             MinecraftClient mc,
             List<StructureInfo> structures,
-            int left,
-            int top,
-            int right,
-            int bottom,
+            StructureInfo activeTarget,
+            int x,
+            int y,
+            int w,
+            int h,
             int mouseX,
             int mouseY
     ) {
-        DrawableHelper.fill(matrices, left, top, right, bottom, 0xE6101720);
-        drawHollowBorder(matrices, left, top, right - left, bottom - top, 0xFF34495E);
+        DrawableHelper.fill(matrices, x, y, x + w, y + h, 0xFF0C1117);
+        drawBorder(matrices, x, y, w, h, 0xFF243447);
 
-        // Column header bar
-        DrawableHelper.fill(matrices, left + 1, top + 1, right - 1, top + 18, 0xFF1B2631);
+        // Header strip
+        DrawableHelper.fill(matrices, x + 1, y + 1, x + w - 1, y + 15, 0xFF16202B);
         DrawableHelper.drawStringWithShadow(
-                matrices,
-                this.textRenderer,
-                "DETECTED STRUCTURES (" + structures.size() + ") - Sorted by Distance",
-                left + 8,
-                top + 5,
-                0xFF00E5FF
+                matrices, this.textRenderer,
+                "NEARBY (" + structures.size() + ") - Click to Track",
+                x + 6, y + 4, 0xFFB0BEC5
         );
 
-        int listStartY = top + 22;
-        int rowHeight = 22;
-        int maxRows = Math.max(1, (bottom - listStartY - 4) / rowHeight);
+        int listTop = y + 17;
+        int rowH = 20;
+        int maxVisible = (h - 19) / rowH;
 
         if (structures.isEmpty()) {
             DrawableHelper.drawCenteredString(
-                    matrices,
-                    this.textRenderer,
-                    "No matching structures detected in render distance yet.",
-                    (left + right) / 2,
-                    (top + bottom) / 2 - 6,
-                    0xFF95A5A6
+                    matrices, this.textRenderer,
+                    "Scanning chunks in render distance...",
+                    x + w / 2, y + h / 2 - 4, 0xFF607D8B
             );
             return;
         }
 
-        scrollOffset = MathHelper.clamp(scrollOffset, 0, Math.max(0, structures.size() - maxRows));
+        scrollOffset = MathHelper.clamp(scrollOffset, 0, Math.max(0, structures.size() - maxVisible));
 
         double px = mc.player.getX();
         double pz = mc.player.getZ();
+        float yaw = mc.player.yaw;
 
-        for (int row = 0; row < maxRows; row++) {
-            int idx = scrollOffset + row;
-            if (idx >= structures.size()) {
-                break;
-            }
-            StructureInfo info = structures.get(idx);
-            int rowTop = listStartY + row * rowHeight;
-            int rowBottom = rowTop + rowHeight - 2;
+        for (int i = 0; i < maxVisible; i++) {
+            int idx = scrollOffset + i;
+            if (idx >= structures.size()) break;
 
-            boolean hovered = mouseX >= left + 4 && mouseX <= right - 4 && mouseY >= rowTop && mouseY <= rowBottom;
-            boolean selected = (idx == selectedIndex);
+            StructureInfo s = structures.get(idx);
+            int ry = listTop + i * rowH;
+            boolean hovered = mouseX >= x + 2 && mouseX <= x + w - 2 && mouseY >= ry && mouseY < ry + rowH - 1;
+            boolean isTracked = s.equals(activeTarget);
 
-            int bgColor = selected ? 0xFF243B53 : (hovered ? 0xFF1C2B3A : 0xAA141E28);
-            DrawableHelper.fill(matrices, left + 4, rowTop, right - 4, rowBottom, bgColor);
+            int bg = isTracked ? 0xFF1E3246 : (hovered ? 0xFF162432 : 0xFF10171F);
+            DrawableHelper.fill(matrices, x + 2, ry, x + w - 2, ry + rowH - 1, bg);
 
-            // Category color bar on the left edge of the row
-            int catColor = info.getCategory().getColorArgb();
-            DrawableHelper.fill(matrices, left + 4, rowTop, left + 8, rowBottom, catColor);
+            int catColor = s.getCategory().getColorArgb();
+            DrawableHelper.fill(matrices, x + 2, ry, x + 5, ry + rowH - 1, catColor);
 
-            int distBlocks = (int) Math.round(info.getHorizontalDistanceTo(px, pz));
-            String titleLine = "[" + info.getCategory().getShortCode() + "] " + info.getCategory().getDisplayName()
-                    + "  —  " + distBlocks + " blocks away";
-            DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, titleLine, left + 13, rowTop + 2, catColor);
+            String arrow = s.getRelativeDirectionArrow(px, pz, yaw);
+            String cardinal = s.getWorldCardinalFromPlayer(px, pz);
+            int dist = (int) Math.round(s.getHorizontalDistanceTo(px, pz));
 
-            String detailLine = info.getFormattedCoordinates()
-                    + "   |   " + info.getDetectionSource()
-                    + " (" + info.getFormattedTime() + ")";
-            DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, detailLine, left + 13, rowTop + 11, 0xFFD5D8DC);
+            String topRow = arrow + " " + s.getCategory().getDisplayName() + " \u00a77(" + cardinal + ")";
+            String distStr = dist + "m";
+            int distW = this.textRenderer.getWidth(distStr);
+
+            DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, topRow, x + 9, ry + 2, catColor);
+            DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, distStr, x + w - distW - 6, ry + 2, 0xFFFFFFFF);
+
+            String bottomRow = "XYZ: " + s.getCompactCoords() + (isTracked ? "  \u00a7a[TRACKING]" : "");
+            DrawableHelper.drawStringWithShadow(matrices, this.textRenderer, bottomRow, x + 9, ry + 11, 0xFF90A4AE);
         }
     }
 
-    private void drawHollowBorder(MatrixStack matrices, int x, int y, int width, int height, int color) {
+    /**
+     * Draws a lightweight Bresenham-style pixel line using DrawableHelper.fill.
+     */
+    private void drawLine(MatrixStack matrices, int x0, int y0, int x1, int y1, int color) {
+        int steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        if (steps == 0) return;
+        for (int i = 0; i <= steps; i += 2) {
+            int px = x0 + (x1 - x0) * i / steps;
+            int py = y0 + (y1 - y0) * i / steps;
+            DrawableHelper.fill(matrices, px, py, px + 1, py + 1, color);
+        }
+    }
+
+    private void drawBorder(MatrixStack matrices, int x, int y, int width, int height, int color) {
         DrawableHelper.fill(matrices, x, y, x + width, y + 1, color);
         DrawableHelper.fill(matrices, x, y + height - 1, x + width, y + height, color);
         DrawableHelper.fill(matrices, x, y + 1, x + 1, y + height - 1, color);
@@ -397,28 +393,24 @@ public class StructureRadarScreen extends Screen {
         }
 
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null) {
-            return false;
-        }
+        if (mc == null || mc.player == null) return false;
 
-        int contentTop = 54;
-        int contentBottom = this.height - 34;
-        int radarPanelSize = Math.min(contentBottom - contentTop, Math.max(130, (this.width - 36) / 3));
-        int listLeft = 14 + radarPanelSize + 10;
-        int listRight = this.width - 14;
-        int listStartY = contentTop + 22;
-        int rowHeight = 22;
+        int radarX = winX + 8;
+        int radarSize = 104;
+        int listX = radarX + radarSize + 8;
+        int listY = winY + 26 + 17;
+        int listW = WINDOW_WIDTH - (radarSize + 24);
+        int listH = 140 - 17;
+        int rowH = 20;
 
-        if (mouseX >= listLeft + 4 && mouseX <= listRight - 4 && mouseY >= listStartY && mouseY <= contentBottom) {
-            int clickedRow = ((int) mouseY - listStartY) / rowHeight;
+        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY <= listY + listH) {
+            int clickedRow = ((int) mouseY - listY) / rowH;
             List<StructureInfo> structures = scanner.getFilteredStructuresSorted(
-                    mc.player.getX(),
-                    mc.player.getZ(),
-                    getActiveCategoryFilter()
+                    mc.player.getX(), mc.player.getZ(), getActiveCategoryFilter()
             );
             int idx = scrollOffset + clickedRow;
             if (idx >= 0 && idx < structures.size()) {
-                selectedIndex = idx;
+                scanner.setTrackedTarget(structures.get(idx));
                 return true;
             }
         }
@@ -427,6 +419,22 @@ public class StructureRadarScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        int radarX = winX + 8;
+        int radarY = winY + 26;
+        int radarSize = 104;
+
+        // Scroll inside radar scope to zoom in/out smoothly
+        if (mouseX >= radarX && mouseX <= radarX + radarSize && mouseY >= radarY && mouseY <= radarY + radarSize) {
+            ModConfig cfg = ModConfig.get();
+            if (amount > 0) {
+                cfg.radarZoomRange = Math.max(64.0D, cfg.radarZoomRange * 0.8D);
+            } else if (amount < 0) {
+                cfg.radarZoomRange = Math.min(2048.0D, cfg.radarZoomRange / 0.8D);
+            }
+            cfg.save();
+            return true;
+        }
+
         int delta = amount > 0 ? -1 : (amount < 0 ? 1 : 0);
         scrollOffset = Math.max(0, scrollOffset + delta);
         return true;

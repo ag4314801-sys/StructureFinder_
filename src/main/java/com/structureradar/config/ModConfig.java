@@ -9,13 +9,11 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Persistent client configuration for StructureRadar in Minecraft 1.16.5.
- * Stores scanning toggles, HUD notification preferences, radar zoom, and active structure filters.
+ * Clean persistent configuration for StructureRadar (Minecraft 1.16.5).
  */
 public class ModConfig {
 
@@ -28,11 +26,11 @@ public class ModConfig {
     private static ModConfig INSTANCE;
 
     public boolean scanningEnabled = true;
-    public boolean hudBannerEnabled = true;
-    public boolean chatAlertsEnabled = true;
-    public boolean persistentHudRadar = true;
+    public boolean miniHudEnabled = true;
+    public boolean chatAlertsEnabled = false; // Off by default to keep chat clean
     public int chunksPerTickBudget = 3;
     public int clusterMergeRadius = 80;
+    public double radarZoomRange = 240.0D;
     public Set<String> enabledStructureTypes = new HashSet<String>();
 
     public ModConfig() {
@@ -49,39 +47,7 @@ public class ModConfig {
     }
 
     public boolean isCategoryEnabled(StructureInfo.StructureCategory category) {
-        if (category == null) {
-            return false;
-        }
-        return enabledStructureTypes.contains(category.name());
-    }
-
-    public void toggleCategory(StructureInfo.StructureCategory category) {
-        if (category == null) {
-            return;
-        }
-        if (enabledStructureTypes.contains(category.name())) {
-            enabledStructureTypes.remove(category.name());
-        } else {
-            enabledStructureTypes.add(category.name());
-        }
-        save();
-    }
-
-    public void enableAllCategories() {
-        for (StructureInfo.StructureCategory category : StructureInfo.StructureCategory.values()) {
-            enabledStructureTypes.add(category.name());
-        }
-        save();
-    }
-
-    public EnumSet<StructureInfo.StructureCategory> getEnabledCategoriesSet() {
-        EnumSet<StructureInfo.StructureCategory> set = EnumSet.noneOf(StructureInfo.StructureCategory.class);
-        for (StructureInfo.StructureCategory category : StructureInfo.StructureCategory.values()) {
-            if (enabledStructureTypes.contains(category.name())) {
-                set.add(category);
-            }
-        }
-        return set;
+        return category != null && enabledStructureTypes.contains(category.name());
     }
 
     public static ModConfig load() {
@@ -93,9 +59,12 @@ public class ModConfig {
                 if (loaded != null) {
                     if (loaded.enabledStructureTypes == null || loaded.enabledStructureTypes.isEmpty()) {
                         loaded.enabledStructureTypes = new HashSet<String>();
-                        for (StructureInfo.StructureCategory category : StructureInfo.StructureCategory.values()) {
-                            loaded.enabledStructureTypes.add(category.name());
+                        for (StructureInfo.StructureCategory c : StructureInfo.StructureCategory.values()) {
+                            loaded.enabledStructureTypes.add(c.name());
                         }
+                    }
+                    if (loaded.radarZoomRange < 64.0D || loaded.radarZoomRange > 2048.0D) {
+                        loaded.radarZoomRange = 240.0D;
                     }
                     return loaded;
                 }
